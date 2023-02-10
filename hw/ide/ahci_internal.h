@@ -28,7 +28,7 @@
 #include "hw/ide/internal.h"
 #include "hw/pci/pci.h"
 
-#define AHCI_MEM_BAR_SIZE         0x1000
+#define AHCI_MEM_BAR_SIZE         0x80000
 #define AHCI_MAX_PORTS            32
 #define AHCI_MAX_SG               168 /* hardware max is 64K */
 #define AHCI_DMA_BOUNDARY         0xffffffff

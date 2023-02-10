@@ -114,6 +114,8 @@ static void pci_ich9_ahci_realize(PCIDevice *dev, Error **errp)
     ahci_realize(&d->ahci, DEVICE(dev), pci_get_address_space(dev), 6);
 
     pci_config_set_prog_interface(dev->config, AHCI_PROGMODE_MAJOR_REV_1);
+    pci_set_word(dev->config + PCI_SUBSYSTEM_VENDOR_ID, 0x1b21);
+    pci_set_word(dev->config + PCI_SUBSYSTEM_ID, 0x1060);
 
     dev->config[PCI_CACHE_LINE_SIZE] = 0x08;  /* Cache line size */
     dev->config[PCI_LATENCY_TIMER]   = 0x00;  /* Latency timer */
@@ -168,8 +170,8 @@ static void ich_ahci_class_init(ObjectClass *klass, void *data)
 
     k->realize = pci_ich9_ahci_realize;
     k->exit = pci_ich9_uninit;
-    k->vendor_id = PCI_VENDOR_ID_INTEL;
-    k->device_id = PCI_DEVICE_ID_INTEL_82801IR;
+    k->vendor_id = 0x1b21;
+    k->device_id = 0x0612;
     k->revision = 0x02;
     k->class_id = PCI_CLASS_STORAGE_SATA;
     dc->vmsd = &vmstate_ich9_ahci;

@@ -103,6 +103,21 @@ static void pci_ich9_ahci_init(Object *obj)
     ahci_init(&d->ahci, DEVICE(obj));
 }
 
+static uint32_t ich9_pci_config_read(PCIDevice *d,
+                                       uint32_t address, int len)
+{
+    uint32_t res = pci_default_read_config(d, address, len);
+    if (address == 0xf4)
+        d->config[0xf4] &= ~0x20;
+    return res;
+}
+
+static void ich9_pci_config_write(PCIDevice *d, uint32_t addr, uint32_t val,
+                                    int l)
+{
+    pci_default_write_config(d, addr, val, l);
+}
+
 static void pci_ich9_ahci_realize(PCIDevice *dev, Error **errp)
 {
     struct AHCIPCIState *d;
@@ -120,6 +135,12 @@ static void pci_ich9_ahci_realize(PCIDevice *dev, Error **errp)
     dev->config[PCI_CACHE_LINE_SIZE] = 0x08;  /* Cache line size */
     dev->config[PCI_LATENCY_TIMER]   = 0x00;  /* Latency timer */
     pci_config_set_interrupt_pin(dev->config, 1);
+
+    dev->config[0xf0] = 0x40;
+    dev->config[0xf1] = 0x00;
+    dev->config[0xf2] = 0x01;
+    dev->config[0xf3] = 0x02;
+    dev->config[0xf4] = 0x10;
 
     /* XXX Software should program this register */
     dev->config[0x90]   = 1 << 6; /* Address Map Register - AHCI mode */
@@ -174,6 +195,8 @@ static void ich_ahci_class_init(ObjectClass *klass, void *data)
     k->device_id = 0x0612;
     k->revision = 0x02;
     k->class_id = PCI_CLASS_STORAGE_SATA;
+    k->config_read = ich9_pci_config_read;
+    k->config_write = ich9_pci_config_write;
     dc->vmsd = &vmstate_ich9_ahci;
     dc->reset = pci_ich9_reset;
     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);

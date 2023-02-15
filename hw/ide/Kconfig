@@ -57,3 +57,9 @@ config IDE_SII3112
     bool
     select IDE_PCI
     select IDE_QDEV
+
+config IDE_ASM106X
+    bool
+    default y if PCI_DEVICES
+    depends on PCI
+    select IDE_QDEV

@@ -23,9 +23,13 @@
 #include "migration/vmstate.h"
 #include "qemu/module.h"
 #include "hw/isa/isa.h"
+#include "hw/ssi/ssi.h"
+#include "hw/block/flash.h"
 #include "sysemu/dma.h"
+#include "sysemu/blockdev.h"
 #include "hw/ide/pci.h"
 #include "ahci_internal.h"
+#include "qapi/error.h"
 
 #define TYPE_ASM106X "asm106x"
 OBJECT_DECLARE_SIMPLE_TYPE(ASM106xState, ASM106X)
@@ -41,6 +45,9 @@ OBJECT_DECLARE_SIMPLE_TYPE(ASM106xState, ASM106X)
 
 struct ASM106xState {
 	PCIDevice parent_obj;
+	SSIBus *spi;
+	qemu_irq irq;
+	char *flash_chip;
 
 	uint32_t vendor_id;
 	uint32_t device_id;
@@ -66,23 +73,60 @@ static void asm106x_init(Object *obj)
 static uint32_t asm106x_pci_config_read(PCIDevice *d, uint32_t address, int len)
 {
 	uint32_t res = pci_default_read_config(d, address, len);
-	if (address == 0xf4)
-		d->config[0xf4] &= ~0x20;
+//	if (address == 0xf4)
+//		d->config[0xf4] &= ~0x20;
 	return res;
 }
 
 static void asm106x_pci_config_write(PCIDevice *d, uint32_t addr, uint32_t val, int l)
 {
+	struct ASM106xState *ad = ASM106X(d);
+
+	if (addr == 0xf4) {
+		int cs = !!(val & 0x10);
+//		printf("ZZZ cs=%d\n", cs);
+		qemu_set_irq(ad->irq, cs);
+		if (val & 0x20) {
+			uint32_t nbytes = val & 0x07;
+			bool do_read = !(val & 0x08);
+			for (int k = 0; k < nbytes; k++) {
+				uint32_t tx = d->config[0xf0 + k];
+				uint32_t rx = ssi_transfer(ad->spi, tx);
+//				printf("Z ssi %s %d/%d tx 0x%x rx 0x%x\n",
+//					do_read ? "rd" : "wr",
+//					k, nbytes,
+//					tx, rx);
+				if (do_read)
+					d->config[0xf0 + k] = rx & 0xff;
+			}
+			val &= ~0x20;
+		}
+	}
+//	printf("def write %02x %02x %02x %02x / %02x\n",
+//		d->config[0xf0],
+//		d->config[0xf1],
+//		d->config[0xf2],
+//		d->config[0xf3],
+//		d->config[0xf4]);
 	pci_default_write_config(d, addr, val, l);
+
 }
 
 static void asm106x_realize(PCIDevice *dev, Error **errp)
 {
+	SysBusDevice *sbd = SYS_BUS_DEVICE(&dev->qdev);
 	struct ASM106xState *d = ASM106X(dev);
-//	int sata_cap_offset;
-//	uint8_t *sata_cap;
-//	d = ASM106X(dev);
-//	int ret;
+
+	sysbus_init_irq(sbd, &d->irq);
+
+	d->spi = ssi_create_bus(&dev->qdev, "ssi");
+	DeviceState *flash_dev = qdev_new(d->flash_chip ?: "en25f05");
+	DriveInfo *dinfo = drive_get(IF_MTD, 0, 0);
+	if (dinfo)
+		qdev_prop_set_drive_err(flash_dev, "drive",
+			blk_by_legacy_dinfo(dinfo),
+			&error_fatal);
+	qdev_realize_and_unref(flash_dev, BUS(d->spi), &error_fatal);
 
 	pci_config_set_prog_interface(dev->config, AHCI_PROGMODE_MAJOR_REV_1);
 	pci_set_word(dev->config + PCI_VENDOR_ID, d->vendor_id);
@@ -94,6 +138,7 @@ static void asm106x_realize(PCIDevice *dev, Error **errp)
 	dev->config[PCI_LATENCY_TIMER]   = 0x00;  /* Latency timer */
 	pci_config_set_interrupt_pin(dev->config, 1);
 
+//	pci_set_byte(dev->config + 0xf4, 0x10);
 	dev->config[0xf0] = 0x40;
 	dev->config[0xf1] = 0x00;
 	dev->config[0xf2] = 0x01;
@@ -138,6 +183,7 @@ static void asm106x_uninit(PCIDevice *dev)
 static Property asm106x_properties[] = {
 	DEFINE_PROP_UINT32("vendor-id", ASM106xState, vendor_id, 0x1b21),
 	DEFINE_PROP_UINT32("device-id", ASM106xState, device_id, 0x0612),
+	DEFINE_PROP_STRING("flash-chip", ASM106xState, flash_chip),
 	DEFINE_PROP_END_OF_LIST(),
 };
 

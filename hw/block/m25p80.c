@@ -194,6 +194,7 @@ static const FlashPartInfo known_devices[] = {
     { INFO("at25256a-nonjedec", 0x0,     0,         1, 262144, EEPROM) },
 
     /* EON -- en25xxx */
+    { INFO("en25f05",     0x1c3110,      0,   4 << 10,  16, 0) },
     { INFO("en25f32",     0x1c3116,      0,  64 << 10,  64, ER_4K) },
     { INFO("en25p32",     0x1c2016,      0,  64 << 10,  64, 0) },
     { INFO("en25q32b",    0x1c3016,      0,  64 << 10,  64, 0) },

@@ -49,6 +49,7 @@ struct ASM106xState {
 	qemu_irq irq;
 	char *flash_chip;
 	BlockBackend *blk;
+	MemoryRegion rom_bar;
 
 	uint32_t vendor_id;
 	uint32_t device_id;
@@ -139,6 +140,10 @@ static void asm106x_realize(PCIDevice *dev, Error **errp)
 	d->irq = qdev_get_gpio_in_named(flash_dev, SSI_GPIO_CS, 0);
 //	cs_line = qdev_get_gpio_in_named(flash_dev, SSI_GPIO_CS, 0);
 //	sysbus_connect_irq(sbd, 0, cs_line);
+
+	unsigned rom_size = 65536;
+	memory_region_init_rom(&d->rom_bar, OBJECT(d), "asm106x.rom", rom_size, &error_fatal);
+	pci_register_bar(dev, PCI_ROM_SLOT, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->rom_bar);
 
 
 	pci_config_set_prog_interface(dev->config, AHCI_PROGMODE_MAJOR_REV_1);

@@ -30,6 +30,7 @@
 #include "hw/ide/pci.h"
 #include "ahci_internal.h"
 #include "qapi/error.h"
+#include "sysemu/block-backend-global-state.h"
 
 #define TYPE_ASM106X "asm106x"
 OBJECT_DECLARE_SIMPLE_TYPE(ASM106xState, ASM106X)
@@ -125,15 +126,15 @@ static void asm106x_realize(PCIDevice *dev, Error **errp)
 	DeviceState *flash_dev = qdev_new(d->flash_chip ?: "en25f05");
 
 
-#if 0
-	DriveInfo *dinfo = drive_get(IF_MTD, 0, 0);
-	if (dinfo)
-		qdev_prop_set_drive_err(flash_dev, "drive",
-			blk_by_legacy_dinfo(dinfo),
-			&error_fatal);
-#endif
-	if (d->blk)
-		qdev_prop_set_drive_err(flash_dev, "drive", d->blk, &error_fatal);
+	if (d->blk) {
+		/* the drive is attached to _our_ device, so detach it first */
+		BlockBackend *blk = d->blk;
+		d->blk = NULL;
+		blk_ref(blk);
+		blk_detach_dev(blk, blk_get_attached_dev(blk));
+		qdev_prop_set_drive_err(flash_dev, "drive", blk, &error_fatal);
+		blk_unref(blk);
+	}
 	qdev_prop_set_bit(flash_dev, "write-enable", true);
 	qdev_realize_and_unref(flash_dev, BUS(d->spi), &error_fatal);
 

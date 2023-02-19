@@ -48,8 +48,6 @@ struct ASM106xState {
 	PCIDevice parent_obj;
 	SSIBus *spi;
 	qemu_irq irq;
-	char *flash_chip;
-	BlockBackend *blk;
 	MemoryRegion rom_bar;
 
 	uint32_t vendor_id;
@@ -81,6 +79,14 @@ static uint32_t asm106x_pci_config_read(PCIDevice *d, uint32_t address, int len)
 	return res;
 }
 
+static int connect_cs(DeviceState *dev, void *opaque)
+{
+	ASM106xState *d = opaque;
+
+	d->irq = qdev_get_gpio_in_named(dev, SSI_GPIO_CS, 0);
+	return 1; /* found,done */
+}
+
 static void asm106x_pci_config_write(PCIDevice *d, uint32_t addr, uint32_t val, int l)
 {
 	struct ASM106xState *ad = ASM106X(d);
@@ -88,7 +94,14 @@ static void asm106x_pci_config_write(PCIDevice *d, uint32_t addr, uint32_t val, 
 	if (addr == 0xf4) {
 		int cs = !!(val & 0x10);
 //		printf("ZZZ cs=%d\n", cs);
-		qemu_set_irq(ad->irq, cs);
+
+
+		if (!ad->irq)
+			qbus_walk_children(BUS(ad->spi), connect_cs, NULL, NULL, NULL, ad);
+		if (ad->irq)
+			qemu_set_irq(ad->irq, cs);
+
+
 		if (val & 0x20) {
 			uint32_t nbytes = val & 0x07;
 			bool do_read = !(val & 0x08);
@@ -123,7 +136,7 @@ static void asm106x_realize(PCIDevice *dev, Error **errp)
 //	sysbus_init_irq(sbd, &d->irq);
 
 	d->spi = ssi_create_bus(&dev->qdev, "ssi");
-	DeviceState *flash_dev = qdev_new(d->flash_chip ?: "en25f05");
+#if 0
 
 
 	if (d->blk) {
@@ -139,6 +152,7 @@ static void asm106x_realize(PCIDevice *dev, Error **errp)
 	qdev_realize_and_unref(flash_dev, BUS(d->spi), &error_fatal);
 
 	d->irq = qdev_get_gpio_in_named(flash_dev, SSI_GPIO_CS, 0);
+#endif
 //	cs_line = qdev_get_gpio_in_named(flash_dev, SSI_GPIO_CS, 0);
 //	sysbus_connect_irq(sbd, 0, cs_line);
 
@@ -202,8 +216,6 @@ static void asm106x_uninit(PCIDevice *dev)
 static Property asm106x_properties[] = {
 	DEFINE_PROP_UINT32("vendor-id", ASM106xState, vendor_id, 0x1b21),
 	DEFINE_PROP_UINT32("device-id", ASM106xState, device_id, 0x0612),
-	DEFINE_PROP_STRING("flash-chip", ASM106xState, flash_chip),
-	DEFINE_PROP_DRIVE("drive", ASM106xState, blk),
 	DEFINE_PROP_END_OF_LIST(),
 };
 

@@ -48,6 +48,7 @@ struct ASM106xState {
 	SSIBus *spi;
 	qemu_irq irq;
 	char *flash_chip;
+	BlockBackend *blk;
 
 	uint32_t vendor_id;
 	uint32_t device_id;
@@ -114,19 +115,31 @@ static void asm106x_pci_config_write(PCIDevice *d, uint32_t addr, uint32_t val, 
 
 static void asm106x_realize(PCIDevice *dev, Error **errp)
 {
-	SysBusDevice *sbd = SYS_BUS_DEVICE(&dev->qdev);
+//	SysBusDevice *sbd = SYS_BUS_DEVICE(&dev->qdev);
 	struct ASM106xState *d = ASM106X(dev);
 
-	sysbus_init_irq(sbd, &d->irq);
+//	sysbus_init_irq(sbd, &d->irq);
 
 	d->spi = ssi_create_bus(&dev->qdev, "ssi");
 	DeviceState *flash_dev = qdev_new(d->flash_chip ?: "en25f05");
+
+
+#if 0
 	DriveInfo *dinfo = drive_get(IF_MTD, 0, 0);
 	if (dinfo)
 		qdev_prop_set_drive_err(flash_dev, "drive",
 			blk_by_legacy_dinfo(dinfo),
 			&error_fatal);
+#endif
+	if (d->blk)
+		qdev_prop_set_drive_err(flash_dev, "drive", d->blk, &error_fatal);
+	qdev_prop_set_bit(flash_dev, "write-enable", true);
 	qdev_realize_and_unref(flash_dev, BUS(d->spi), &error_fatal);
+
+	d->irq = qdev_get_gpio_in_named(flash_dev, SSI_GPIO_CS, 0);
+//	cs_line = qdev_get_gpio_in_named(flash_dev, SSI_GPIO_CS, 0);
+//	sysbus_connect_irq(sbd, 0, cs_line);
+
 
 	pci_config_set_prog_interface(dev->config, AHCI_PROGMODE_MAJOR_REV_1);
 	pci_set_word(dev->config + PCI_VENDOR_ID, d->vendor_id);
@@ -184,6 +197,7 @@ static Property asm106x_properties[] = {
 	DEFINE_PROP_UINT32("vendor-id", ASM106xState, vendor_id, 0x1b21),
 	DEFINE_PROP_UINT32("device-id", ASM106xState, device_id, 0x0612),
 	DEFINE_PROP_STRING("flash-chip", ASM106xState, flash_chip),
+	DEFINE_PROP_DRIVE("drive", ASM106xState, blk),
 	DEFINE_PROP_END_OF_LIST(),
 };
 

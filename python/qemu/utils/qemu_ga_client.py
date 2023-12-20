@@ -48,6 +48,7 @@ from typing import (
     Dict,
     Optional,
     Sequence,
+    Tuple,
 )
 
 from qemu.qmp import ConnectError, SocketAddrT
@@ -100,6 +101,28 @@ class QemuGuestAgentClient:
         finally:
             self.qga.file_close(handle=handle)
         return data
+
+    def exec(self, path: str, args: Sequence[str], stdin: Optional[bytes] = None) -> Tuple[bytes, bytes, int]:
+        "Returns (stdout, stderr, exitcode)"
+        # TODO: env?
+        kw = {"capture-output": True}
+        if stdin:
+            kw['input-data'] = base64.b64encode(stdin).decode('utf-8')
+        res = self.qga.exec(path=path, arg=args, **kw)
+        while True:
+            status = self.qga.exec_status(pid=res['pid'])
+            if status['exited']:
+                break
+            # TODO: sleep?
+        try:
+            stdout = base64.b64decode(status['out-data'])
+        except KeyError:
+            stdout = None
+        try:
+            stderr = base64.b64decode(status['err-data'])
+        except KeyError:
+            stderr = None
+        return stdout, stderr, status['exitcode']
 
     def info(self) -> str:
         info = self.qga.info()
@@ -270,6 +293,22 @@ def _cmd_halt(client: QemuGuestAgentClient, args: Sequence[str]) -> None:
 def _cmd_reboot(client: QemuGuestAgentClient, args: Sequence[str]) -> None:
     assert not args
     client.shutdown('reboot')
+
+
+def _cmd_exec(client: QemuGuestAgentClient, args: Sequence[str]) -> None:
+    if len(args) < 1:
+        print('Invalid argument')
+        print('Usage: exec <command> [<args>...]')
+        sys.exit(1)
+    indata = None
+    if not os.isatty(sys.stdin.fileno()):
+        indata = sys.stdin.buffer.read()
+    out, err, rv = client.exec(args[0], args[1:], indata)
+    if out is not None:
+        sys.stdout.buffer.write(out)
+    if err is not None:
+        sys.stderr.buffer.write(err)
+    sys.exit(rv)
 
 
 commands = [m.replace('_cmd_', '') for m in dir() if '_cmd_' in m]
